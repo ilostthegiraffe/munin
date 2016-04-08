@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+
+#
+# Munin script to:
+# 1. Login to remote FREENAS system: Dump SMART DATA to csv. 
+# 2. Copy csv file to local munin-node host..
+# 3. Provide munin plugin compatible output
+
+
+import os
+import sys
+import csv
+
+id_rsa_location = "/home/munin/.ssh/id_rsa" # this should be somewhere readable and not likely to be overwritten if you do an OS upgrade.
+remote_user = "root" # on freenas we must use root, as we are running smartctl, and FreeNAS doesnt like us messing with sudoers etc.
+remote_ip = "192.168.0.5" # this should be grabbed from the file name.  its on my to-do list.
+remote_script  = "/mnt/TANK/sysConfig/monitoring/get_sata_temp.py"
+remote_datafile = "/root/temp/monitoring/smartsatadata.txt"
+local_datafile_dir = "/monitoring/"
+local_datafile_name = "smartsatadata.txt"
+
+a=os.popen("ssh -tt -o LogLevel=quiet -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -T -i "+ id_rsa_location + " " + remote_user + "@" + remote_ip + " '"+ remote_script+"'")
+b = os.popen("scp -o LogLevel=quiet -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no  -i " + id_rsa_location + " " + remote_user + "@" + remote_ip+ ":" + remote_datafile + " " + local_datafile_dir)
+
+deviceList=[]
+
+smartdatafile = open(local_datafile_dir + local_datafile_name,'r')
+smartitems = csv.reader(smartdatafile, delimiter=',')
+
+for row in smartitems:
+    deviceList.append(row)
+
+smartdatafile.close()
+
+if "config" in str(sys.argv):
+    print "graph_title HDD Temps";
+    print "graph_vlabel DegC";
+    print "graph_category DriveTemp";
+    print "graph_info This graph shows device temp over time.";
+    for row in deviceList:
+        print "_device_" + row[0] + ".label",row[0]
+        print "_device_" + row[0] + ".critical 50"
+else:
+    smartdatafile = open(local_datafile_dir + local_datafile_name,'r')
+    smartdata = csv.reader(smartdatafile, delimiter=',')
+    for row in deviceList:
+        print "_device_"+ row[0]+".value", row[7]
+    smartdatafile.close()
+
+sys.exit(os.EX_OK)
